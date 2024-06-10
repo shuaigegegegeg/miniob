@@ -19,7 +19,6 @@ See the Mulan PSL v2 for more details. */
 #include "common/lang/comparator.h"
 #include "common/lang/string.h"
 #include <iomanip>
-#include <sstream>
 
 const char *ATTR_TYPE_NAME[] = {"undefined", "chars", "ints", "dates", "floats", "booleans"};
 
@@ -55,21 +54,23 @@ Value::Value(bool val)
   set_boolean(val);
 }
 
-Value::Value(const char *s, int len /*= 0*/) { set_string(s, len); }
-
-
+Value::Value(const char *s, int len /*= 0*/)
+{
+  set_string(s, len);
+}
 Value::Value(const char *s, int len , int flag){
   std::istringstream xyz(s);
   int year,month,day;
   char dash;
   xyz>>year>>dash>>month>>dash>>day;
   if(!isValidDate(year,month,day)){
-    throw std::string("invalid date");
+        throw std::string("invalid date");
     return;
-  }
-  int val=turn_to_days(year,month,day);
+    }
+   int val=turn_to_days(year,month,day);
   set_date(val);
 }
+
 
 void Value::set_data(char *data, int length)
 {
@@ -79,16 +80,17 @@ void Value::set_data(char *data, int length)
     } break;
     case INTS: {
       num_value_.int_value_ = *(int *)data;
-      length_               = length;
-    } break;
-    case DATES: {
-      num_value_.date_value_ = *(int *)data;
-      length_               = length;
+      length_ = length;
     } break;
     case FLOATS: {
       num_value_.float_value_ = *(float *)data;
       length_ = length;
     } break;
+    case DATES: {
+      num_value_.date_value_ = *(int *)data;
+      length_               = length;
+    } break;
+
     case BOOLEANS: {
       num_value_.bool_value_ = *(int *)data != 0;
       length_ = length;
@@ -105,18 +107,17 @@ void Value::set_int(int val)
   length_ = sizeof(val);
 }
 
-void Value::set_date(int val)
-{
-  attr_type_            = DATES;
-  num_value_.date_value_ = val;
-  length_               = sizeof(val);
-}
-
 void Value::set_float(float val)
 {
   attr_type_ = FLOATS;
   num_value_.float_value_ = val;
   length_ = sizeof(val);
+}
+void Value::set_date(int val)
+{
+  attr_type_            = DATES;
+  num_value_.date_value_ = val;
+  length_               = sizeof(val);
 }
 void Value::set_boolean(bool val)
 {
@@ -142,11 +143,11 @@ void Value::set_value(const Value &value)
     case INTS: {
       set_int(value.get_int());
     } break;
-    case DATES: {
-      set_int(value.get_date());
-    } break;
     case FLOATS: {
       set_float(value.get_float());
+    } break;
+    case DATES: {
+      set_int(value.get_date());
     } break;
     case CHARS: {
       set_string(value.get_string().c_str());
@@ -179,12 +180,12 @@ std::string Value::to_string() const
     case INTS: {
       os << num_value_.int_value_;
     } break;
-     case DATES: {
-      std::string str=days_to_datestr(num_value_.date_value_);
-      os << str;
-    } break;
     case FLOATS: {
       os << common::double_to_str(num_value_.float_value_);
+    } break;
+    case DATES: {
+      std::string str=days_to_datestr(num_value_.date_value_);
+      os << str;
     } break;
     case BOOLEANS: {
       os << num_value_.bool_value_;
@@ -206,11 +207,11 @@ int Value::compare(const Value &other) const
       case INTS: {
         return common::compare_int((void *)&this->num_value_.int_value_, (void *)&other.num_value_.int_value_);
       } break;
-      case DATES: {
-        return common::compare_date((void *)&this->num_value_.int_value_, (void *)&other.num_value_.int_value_);
-      } break;
       case FLOATS: {
         return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other.num_value_.float_value_);
+      } break;
+            case DATES: {
+        return common::compare_date((void *)&this->num_value_.int_value_, (void *)&other.num_value_.int_value_);
       } break;
       case CHARS: {
         return common::compare_string((void *)this->str_value_.c_str(),
@@ -232,6 +233,18 @@ int Value::compare(const Value &other) const
     float other_data = other.num_value_.int_value_;
     return common::compare_float((void *)&this->num_value_.float_value_, (void *)&other_data);
   }
+  else if (this->attr_type_ == INTS && other.attr_type_ == CHARS) {
+    return common::compare_int_string((void *)&this->num_value_.int_value_, (void *)other.str_value_.c_str());
+  }
+   else if (this->attr_type_ == CHARS && other.attr_type_ == INTS) {
+    return -(common::compare_int_string((void *)&other.num_value_.int_value_, (void *)this->str_value_.c_str()));
+  }
+   else if (this->attr_type_ == FLOATS && other.attr_type_ == CHARS) {
+    return common::compare_float_string((void *)&this->num_value_.float_value_, (void *)other.str_value_.c_str());
+  }
+   else if (this->attr_type_ == CHARS && other.attr_type_ == FLOATS) {
+    return -(common::compare_float_string((void *)&other.num_value_.float_value_, (void *)this->str_value_.c_str()));
+  } 
   LOG_WARN("not supported");
   return -1;  // TODO return rc?
 }
@@ -250,11 +263,11 @@ int Value::get_int() const
     case INTS: {
       return num_value_.int_value_;
     }
-    case DATES: {
-      return num_value_.date_value_;
-    }
     case FLOATS: {
       return (int)(num_value_.float_value_);
+    }
+    case DATES: {
+      return num_value_.date_value_;
     }
     case BOOLEANS: {
       return (int)(num_value_.bool_value_);
@@ -281,11 +294,11 @@ float Value::get_float() const
     case INTS: {
       return float(num_value_.int_value_);
     } break;
-    case DATES: {
-      return float(num_value_.date_value_);
-    } break;
     case FLOATS: {
       return num_value_.float_value_;
+    } break;
+    case DATES: {
+      return float(num_value_.date_value_);
     } break;
     case BOOLEANS: {
       return float(num_value_.bool_value_);
@@ -327,12 +340,12 @@ bool Value::get_boolean() const
     case INTS: {
       return num_value_.int_value_ != 0;
     } break;
-    case DATES: {
-      return num_value_.date_value_ != 0;
-    } break;
     case FLOATS: {
       float val = num_value_.float_value_;
       return val >= EPSILON || val <= -EPSILON;
+    } break;
+    case DATES: {
+      return num_value_.date_value_ != 0;
     } break;
     case BOOLEANS: {
       return num_value_.bool_value_;
@@ -344,12 +357,11 @@ bool Value::get_boolean() const
   }
   return false;
 }
-
 int Value::get_date() const{
   return get_int();
 }
 int Value::turn_to_days(int year,int month,int day)
-  {
+{
    int days = 0;
     int y = 0;
     for (;y < year; ++y) {
@@ -364,12 +376,12 @@ int Value::turn_to_days(int year,int month,int day)
 
 int Value::leap_year(int year) const
 {
-    if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
+        if ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) {
         return 1; // 如果是闰年，则返回1
-    } else {
+        } else {
         return 0; // 如果不是闰年，则返回0
+        }
     }
-}
 
 
 int Value::month_days(int year, int month) const
@@ -427,4 +439,3 @@ bool Value::isValidDate(int year, int month, int day)
 
     return true;
 }
-

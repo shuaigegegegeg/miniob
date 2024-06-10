@@ -55,6 +55,11 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 
 //标识tokens
 %token  SEMICOLON
+        SUM_F
+        AVG_F
+        MAX_F
+        MIN_F
+        COUNT_F
         CREATE
         DROP
         TABLE
@@ -75,9 +80,9 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         TRX_COMMIT
         TRX_ROLLBACK
         INT_T
+        DATE_T
         STRING_T
         FLOAT_T
-        DATE_T
         HELP
         EXIT
         DOT //QUOTE
@@ -88,6 +93,8 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         AND
         SET
         ON
+        INNER
+        JOIN
         LOAD
         DATA
         INFILE
@@ -98,19 +105,15 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
         LE
         GE
         NE
-        MAX_F
-        MIN_F
-        SUM_F
-        AVG_F
-        COUNT_F
-        
+
 /** union 中定义各种数据类型，真实生成的代码也是union类型，所以不能有非POD类型的数据 **/
 %union {
   ParsedSqlNode *                   sql_node;
   ConditionSqlNode *                condition;
+  JoinSqlNode *                     join_sql_node;
   Value *                           value;
   enum CompOp                       comp;
-  enum AggrOp                       aggr;
+  enum AggrOp                       aggregation;
   RelAttrSqlNode *                  rel_attr;
   std::vector<AttrInfoSqlNode> *    attr_infos;
   AttrInfoSqlNode *                 attr_info;
@@ -138,15 +141,16 @@ ArithmeticExpr *create_arithmetic_expression(ArithmeticExpr::Type type,
 %type <value>               value
 %type <number>              number
 %type <comp>                comp_op
-%type <aggr>                aggr_op
-%type <rel_attr>            rel_attr
+%type <aggregation>         aggr_op
 %type <rel_attr>            rel_attr_aggr
 %type <rel_attr_list>       rel_attr_aggr_list
+%type <rel_attr>            rel_attr
 %type <attr_infos>          attr_def_list
 %type <attr_info>           attr_def
 %type <value_list>          value_list
 %type <condition_list>      where
 %type <condition_list>      condition_list
+%type <join_sql_node>       join_list;
 %type <rel_attr_list>       select_attr
 %type <relation_list>       rel_list
 %type <rel_attr_list>       attr_list
@@ -433,7 +437,7 @@ update_stmt:      /*  update 语句的语法解析树*/
     }
     ;
 select_stmt:        /*  select 语句的语法解析树*/
-    SELECT select_attr FROM ID rel_list where
+    SELECT select_attr FROM ID rel_list join_list where
     {
       $$ = new ParsedSqlNode(SCF_SELECT);
       if ($2 != nullptr) {
@@ -447,11 +451,17 @@ select_stmt:        /*  select 语句的语法解析树*/
       $$->selection.relations.push_back($4);
       std::reverse($$->selection.relations.begin(), $$->selection.relations.end());
 
-      if ($6 != nullptr) {
-        $$->selection.conditions.swap(*$6);
-        delete $6;
+      if ($7 != nullptr) {
+        $$->selection.conditions.swap(*$7);
+        delete $7;
       }
       free($4);
+
+      if ($6 != nullptr) {
+        $$->selection.relations.insert($$->selection.relations.end(), $6->relations.begin(), $6->relations.end());
+        $$->selection.conditions.insert($$->selection.conditions.end(), $6->conditions.begin(), $6->conditions.end());
+        delete $6;
+      }
     }
     ;
 calc_stmt:
@@ -527,10 +537,10 @@ select_attr:
     ;
 
 rel_attr_aggr:
-    '*' {
-      $$ = new RelAttrSqlNode;
-      $$->relation_name = "";
-      $$->attribute_name = "*";
+'*' {
+    $$ = new RelAttrSqlNode;
+    $$->relation_name = "";
+    $$->attribute_name = "*";
   }
   | 
   ID {
@@ -549,18 +559,18 @@ rel_attr_aggr:
 
 rel_attr_aggr_list:
 /* empty */
-    {
-      $$ = nullptr;
+  {
+    $$ = nullptr;
+  }
+  | COMMA rel_attr_aggr rel_attr_aggr_list {
+    if ($3 != nullptr) {
+      $$ = $3;
+    } else {
+      $$ = new std::vector<RelAttrSqlNode>;
     }
-    | COMMA rel_attr_aggr rel_attr_aggr_list {
-      if ($3 != nullptr) {
-        $$ = $3;
-      } else {
-        $$ = new std::vector<RelAttrSqlNode>;
-      }
 
-      $$->emplace_back(*$2);
-      delete $2;
+    $$->emplace_back(*$2);
+    delete $2;
   }
   ;
     
@@ -598,8 +608,8 @@ rel_attr:
       $$->relation_name = "";
       $$->aggregation = $1;
       $$->valid = false;
-    }
-    ;
+  }
+  ;
 
 attr_list:
     /* empty */
@@ -634,6 +644,32 @@ rel_list:
       free($2);
     }
     ;
+
+join_list:
+    {
+      $$ = nullptr;
+    }
+    | INNER join_list {
+      $$ = $2;
+    }
+    | JOIN ID ON condition_list join_list {      
+        $$ = new JoinSqlNode();
+        if ($4 != nullptr) {
+          $$->conditions.swap(*$4);
+          delete $4;
+        }
+
+        $$->relations.push_back($2);
+        free($2);
+
+        if ($5 != nullptr) {
+          $$->relations.insert($$->relations.end(), $5->relations.begin(), $5->relations.end());
+          $$->conditions.insert($$->conditions.end(), $5->conditions.begin(), $5->conditions.end());
+          delete $5;
+        }
+    }
+    ;
+
 where:
     /* empty */
     {
